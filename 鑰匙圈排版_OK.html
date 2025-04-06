@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PNG圖片調整與A4排版工具</title>
+    <!-- 引入jsPDF和html2canvas库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2 {
+            color: #333;
+            text-align: center;
+        }
+        .input-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, button {
+            margin-bottom: 10px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            padding: 10px 15px;
+            border: none;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .preview-container {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        .preview-section {
+            flex: 1;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin: 0 10px;
+            background-color: white;
+        }
+        .a4-preview {
+            width: 21cm;
+            height: 29.7cm;
+            margin: 0 auto;
+            padding: 1cm;
+            border: 1px solid #ccc;
+            background-color: white;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        /* 新增：顯示空白邊距的視覺提示 */
+        .margin-guide {
+            position: absolute;
+            background-color: rgba(255, 235, 235, 0.5);
+            z-index: 10;
+        }
+        .margin-top {
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 0.5cm;
+        }
+        .margin-left {
+            top: 0;
+            left: 0;
+            width: 0.5cm;
+            height: 100%;
+        }
+        /* 新增：右側空白邊距的視覺提示 */
+        .margin-right {
+            top: 0;
+            right: 0;
+            width: 0.5cm;
+            height: 100%;
+        }
+        .content-area {
+            position: absolute;
+            top: 0.5cm;
+            left: 0.5cm;
+            width: calc(100% - 1cm); /* 改為減去左右各0.5cm的邊距 */
+            height: calc(100% - 0.5cm);
+            border: 1px dashed rgba(200, 200, 200, 0.5);
+            z-index: 5;
+        }
+        .image-container {
+            position: relative;
+            margin-bottom: 10px;
+        }
+        .image-container img {
+            max-width: 100%;
+            /* 移除圖片虛線邊框 */
+            border: none;
+        }
+        .image-controls {
+            margin-top: 5px;
+        }
+        .gallery {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .gallery-item {
+            position: relative;
+            border: 1px solid #ddd;
+            padding: 5px;
+            background: white;
+        }
+        .gallery-item img {
+            max-height: 100px;
+        }
+        .gallery-item .image-info {
+            font-size: 12px;
+            color: #666;
+        }
+        .drag-over {
+            background-color: #e9f7ef;
+            border: 2px dashed #4CAF50;
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #ddd;
+            height: 20px;
+            margin-top: 10px;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+            text-align: center;
+            color: white;
+            line-height: 20px;
+            font-size: 12px;
+        }
+        .status {
+            margin-top: 10px;
+            color: #666;
+        }
+        /* PDF生成加载样式 */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            flex-direction: column;
+            display: none;
+        }
+        .loading-spinner {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #4CAF50;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+        }
+        .loading-text {
+            color: white;
+            margin-top: 20px;
+            font-size: 18px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PNG圖片調整與A4排版工具</h1>
+        
+        <div class="input-section">
+            <h2>選擇圖片</h2>
+            <input type="file" id="file-input" multiple accept=".png" />
+            <div id="drop-area" style="padding: 40px; border: 2px dashed #ccc; text-align: center; margin-top: 10px;">
+                <p>或將PNG圖片拖放到此處</p>
+            </div>
+            <div id="progress-container" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress" id="progress"></div>
+                </div>
+                <div class="status" id="status">處理中...</div>
+            </div>
+        </div>
+        
+        <div class="input-section">
+            <h2>圖片設定</h2>
+            <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+                <div style="flex: 1; min-width: 250px;">
+                    <label for="img-width">寬度 (公分):</label>
+                    <input type="number" id="img-width" min="0.1" max="21" step="0.1" value="5" />
+                    
+                    <label for="img-height">高度 (公分):</label>
+                    <input type="number" id="img-height" min="0.1" max="29.7" step="0.1" value="5" />
+                    
+                    <label>
+                        <input type="checkbox" id="keep-ratio" checked /> 保持比例
+                    </label>
+                </div>
+                
+                <div style="flex: 1; min-width: 250px;">
+                    <label for="layout-type">排版方式:</label>
+                    <select id="layout-type">
+                        <option value="auto">自動排列</option>
+                        <option value="grid">網格排列</option>
+                        <option value="custom">自訂位置</option>
+                    </select>
+                    
+                    <!-- 通用間隔設定 -->
+                    <label for="spacing">圖片間距 (公分):</label>
+                    <input type="number" id="spacing" min="0" max="5" step="0.1" value="0.5" />
+                    
+                    <div id="grid-options" style="display: none;">
+                        <label for="columns">每行圖片數:</label>
+                        <input type="number" id="columns" min="1" max="10" value="3" />
+                    </div>
+                </div>
+                
+                <div style="flex: 1; min-width: 250px;">
+                    <label for="mirror-option">鏡像選項:</label>
+                    <select id="mirror-option">
+                        <option value="none">無鏡像</option>
+                        <option value="horizontal">水平鏡像</option>
+                        <option value="vertical">垂直鏡像</option>
+                        <option value="both">水平和垂直鏡像</option>
+                    </select>
+                    
+                    <button id="apply-settings">套用設定</button>
+                    <button id="export-pdf">導出為PDF</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="preview-container">
+            <div class="preview-section" style="flex: 2;">
+                <h2>A4預覽</h2>
+                <div class="a4-preview" id="a4-preview">
+                    <!-- 顯示空白邊距的視覺提示 -->
+                    <div class="margin-guide margin-top" title="頂部空白0.5公分"></div>
+                    <div class="margin-guide margin-left" title="左側空白0.5公分"></div>
+                    <div class="margin-guide margin-right" title="右側空白0.5公分"></div>
+                    <div class="content-area"></div>
+                    <!-- 图片将在这里动态生成 -->
+                </div>
+            </div>
+            
+            <div class="preview-section" style="flex: 1;">
+                <h2>已選圖片</h2>
+                <div class="gallery" id="gallery">
+                    <!-- 图片缩略图将在这里动态生成 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PDF生成加载提示 -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">正在生成PDF，請稍候...</div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('file-input');
+            const dropArea = document.getElementById('drop-area');
+            const gallery = document.getElementById('gallery');
+            const a4Preview = document.getElementById('a4-preview');
+            const applyBtn = document.getElementById('apply-settings');
+            const exportBtn = document.getElementById('export-pdf');
+            const layoutType = document.getElementById('layout-type');
+            const gridOptions = document.getElementById('grid-options');
+            const progressContainer = document.getElementById('progress-container');
+            const progressBar = document.getElementById('progress');
+            const statusText = document.getElementById('status');
+            const loadingOverlay = document.getElementById('loading-overlay');
+            
+            // 确保jsPDF可用
+            const { jsPDF } = window.jspdf;
+            
+            // 存储上传的图片
+            let uploadedImages = [];
+            
+            // 边距设置（0.5cm）
+            const marginTop = 0.5;
+            const marginLeft = 0.5;
+            const marginRight = 0.5; // 添加右邊距設置
+            const marginTopPx = marginTop * 37.8; // 转换为像素
+            const marginLeftPx = marginLeft * 37.8; // 转换为像素
+            const marginRightPx = marginRight * 37.8; // 右邊距轉換為像素
+            
+            // 拖放功能
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropArea.addEventListener(eventName, highlight, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, unhighlight, false);
+            });
+            
+            function highlight() {
+                dropArea.classList.add('drag-over');
+            }
+            
+            function unhighlight() {
+                dropArea.classList.remove('drag-over');
+            }
+            
+            dropArea.addEventListener('drop', handleDrop, false);
+            
+            function handleDrop(e) {
+                let dt = e.dataTransfer;
+                let files = dt.files;
+                handleFiles(files);
+            }
+            
+            fileInput.addEventListener('change', function() {
+                handleFiles(this.files);
+            });
+            
+            layoutType.addEventListener('change', function() {
+                if (this.value === 'grid') {
+                    gridOptions.style.display = 'block';
+                } else {
+                    gridOptions.style.display = 'none';
+                }
+                updatePreview();
+            });
+            
+            function handleFiles(files) {
+                if (!files.length) return;
+                
+                // 显示进度条
+                progressContainer.style.display = 'block';
+                let processed = 0;
+                
+                // 过滤出PNG文件
+                const pngFiles = Array.from(files).filter(file => file.type === 'image/png');
+                
+                if (pngFiles.length === 0) {
+                    progressContainer.style.display = 'none';
+                    alert('請選擇PNG格式的圖片');
+                    return;
+                }
+                
+                pngFiles.forEach((file, index) => {
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        const img = new Image();
+                        img.src = e.target.result;
+                        
+                        img.onload = function() {
+                            // 添加图片到数组
+                            uploadedImages.push({
+                                id: Date.now() + index,
+                                name: file.name,
+                                src: e.target.result,
+                                width: img.width,
+                                height: img.height,
+                                displayWidth: 5, // 默认5cm
+                                displayHeight: 5, // 默认5cm
+                                mirror: 'none'
+                            });
+                            
+                            // 更新进度
+                            processed++;
+                            const progress = Math.round((processed / pngFiles.length) * 100);
+                            progressBar.style.width = progress + '%';
+                            progressBar.textContent = progress + '%';
+                            statusText.textContent = `處理中...${processed}/${pngFiles.length}`;
+                            
+                            // 當所有圖片處理完成時
+                            if (processed === pngFiles.length) {
+                                updateGallery();
+                                updatePreview();
+                                setTimeout(() => {
+                                    progressContainer.style.display = 'none';
+                                }, 500);
+                            }
+                        };
+                    };
+                    
+                    reader.readAsDataURL(file);
+                });
+            }
+            
+            function updateGallery() {
+                gallery.innerHTML = '';
+                
+                uploadedImages.forEach((img, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'gallery-item';
+                    
+                    const imgEl = document.createElement('img');
+                    imgEl.src = img.src;
+                    
+                    const info = document.createElement('div');
+                    info.className = 'image-info';
+                    info.textContent = `${img.name} (${img.displayWidth.toFixed(1)}cm x ${img.displayHeight.toFixed(1)}cm)`;
+                    
+                    const removeBtn = document.createElement('button');
+                    removeBtn.textContent = '移除';
+                    removeBtn.style.backgroundColor = '#f44336';
+                    removeBtn.style.marginTop = '5px';
+                    removeBtn.onclick = function() {
+                        uploadedImages.splice(index, 1);
+                        updateGallery();
+                        updatePreview();
+                    };
+                    
+                    item.appendChild(imgEl);
+                    item.appendChild(info);
+                    item.appendChild(removeBtn);
+                    gallery.appendChild(item);
+                });
+            }
+            
+            function updatePreview() {
+                // 清除预览区域中的图片，但保留边距指示
+                const existingImages = a4Preview.querySelectorAll('.image-container');
+                existingImages.forEach(img => img.remove());
+                
+                if (uploadedImages.length === 0) return;
+                
+                const cmToPx = 37.8; // 1cm ≈ 37.8px (96dpi)
+                const a4Width = 21 * cmToPx;
+                const a4Height = 29.7 * cmToPx;
+                const usableWidth = a4Width - marginLeftPx - marginRightPx; // 考慮右邊距
+                const usableHeight = a4Height - marginTopPx;
+                
+                // 获取布局设置
+                const layout = layoutType.value;
+                
+                // 获取间距设置（公分）
+                const spacing = parseFloat(document.getElementById('spacing').value) || 0.5;
+                const spacingPx = spacing * cmToPx;
+                
+                // 根据布局方法放置图片
+                if (layout === 'auto') {
+                    let currentX = marginLeftPx; // 从左边距开始
+                    let currentY = marginTopPx; // 从上边距开始
+                    let rowHeight = 0;
+                    
+                    uploadedImages.forEach(img => {
+                        const imgWidth = img.displayWidth * cmToPx;
+                        const imgHeight = img.displayHeight * cmToPx;
+                        
+                        // 检查是否需要换行（考慮右邊距）
+                        if (currentX + imgWidth > a4Width - marginRightPx) {
+                            currentX = marginLeftPx; // 从左边距开始新行
+                            currentY += rowHeight + spacingPx; // 使用自定义间距
+                            rowHeight = 0;
+                        }
+                        
+                        // 检查是否需要新页
+                        if (currentY + imgHeight > a4Height) {
+                            // 这里简化处理，实际上应该创建新页
+                            alert('圖片太多，無法全部放入A4頁面');
+                            return;
+                        }
+                        
+                        // 创建图片元素
+                        createImageElement(img, currentX, currentY, imgWidth, imgHeight);
+                        
+                        // 更新位置，使用自定义间距
+                        currentX += imgWidth + spacingPx;
+                        rowHeight = Math.max(rowHeight, imgHeight);
+                    });
+                } else if (layout === 'grid') {
+                    const columns = parseInt(document.getElementById('columns').value) || 3;
+                    
+                    // 计算每个单元格的宽度（考虑左边距、右边距和间距）
+                    const cellWidth = (usableWidth - (spacingPx * (columns - 1))) / columns;
+                    
+                    // 先计算每行的高度
+                    let rows = Math.ceil(uploadedImages.length / columns);
+                    let rowHeights = [];
+                    
+                    for (let i = 0; i < rows; i++) {
+                        let maxHeight = 0;
+                        for (let j = 0; j < columns; j++) {
+                            const idx = i * columns + j;
+                            if (idx < uploadedImages.length) {
+                                const img = uploadedImages[idx];
+                                // 根据单元格宽度等比例缩放图片
+                                const ratio = img.displayHeight / img.displayWidth;
+                                const displayWidth = Math.min(cellWidth, img.displayWidth * cmToPx);
+                                const displayHeight = displayWidth * ratio;
+                                
+                                maxHeight = Math.max(maxHeight, displayHeight);
+                            }
+                        }
+                        rowHeights.push(maxHeight);
+                    }
+                    
+                    // 放置图片
+                    uploadedImages.forEach((img, index) => {
+                        const col = index % columns;
+                        const row = Math.floor(index / columns);
+                        
+                        // 计算当前行之前所有行的总高度（包括间距）
+                        let previousRowsHeight = 0;
+                        for (let i = 0; i < row; i++) {
+                            previousRowsHeight += rowHeights[i] + spacingPx;
+                        }
+                        
+                        // 计算图片位置（考虑边距和间距）
+                        const x = marginLeftPx + col * (cellWidth + spacingPx);
+                        const y = marginTopPx + previousRowsHeight;
+                        
+                        // 根据单元格宽度等比例缩放图片
+                        const ratio = img.displayHeight / img.displayWidth;
+                        const displayWidth = Math.min(cellWidth, img.displayWidth * cmToPx);
+                        const displayHeight = displayWidth * ratio;
+                        
+                        // 检查是否超出页面
+                        if (y + displayHeight > a4Height) {
+                            alert('圖片太多，無法全部放入A4頁面');
+                            return;
+                        }
+                        
+                        // 创建图片元素
+                        createImageElement(img, x, y, displayWidth, displayHeight);
+                    });
+                } else if (layout === 'custom') {
+                    // 自定义布局需要拖拽功能，简化版不实现
+                    a4Preview.innerHTML = '<p style="text-align: center; margin-top: 50px;">自訂位置功能正在開發中...</p>';
+                    // 重新添加边距指示
+                    addMarginGuides();
+                }
+            }
+            
+            function addMarginGuides() {
+                // 添加边距视觉提示
+                const marginTop = document.createElement('div');
+                marginTop.className = 'margin-guide margin-top';
+                marginTop.title = '頂部空白0.5公分';
+                
+                const marginLeft = document.createElement('div');
+                marginLeft.className = 'margin-guide margin-left';
+                marginLeft.title = '左側空白0.5公分';
+                
+                // 添加右側空白邊距視覺提示
+                const marginRight = document.createElement('div');
+                marginRight.className = 'margin-guide margin-right';
+                marginRight.title = '右側空白0.5公分';
+                
+                const contentArea = document.createElement('div');
+                contentArea.className = 'content-area';
+                
+                a4Preview.appendChild(marginTop);
+                a4Preview.appendChild(marginLeft);
+                a4Preview.appendChild(marginRight);
+                a4Preview.appendChild(contentArea);
+            }
+            
+            function createImageElement(img, x, y, width, height) {
+                const imgElement = document.createElement('div');
+                imgElement.className = 'image-container';
+                imgElement.style.position = 'absolute';
+                imgElement.style.left = `${x}px`;
+                imgElement.style.top = `${y}px`;
+                imgElement.style.width = `${width}px`;
+                imgElement.style.height = `${height}px`;
+                
+                const imgEl = document.createElement('img');
+                imgEl.src = img.src;
+                imgEl.style.width = '100%';
+                imgEl.style.height = '100%';
+                imgEl.style.objectFit = 'contain';
+                // 移除虛線邊框
+                imgEl.style.border = 'none';
+                
+                // 应用镜像效果
+                if (img.mirror === 'horizontal' || img.mirror === 'both') {
+                    imgEl.style.transform += 'scaleX(-1)';
+                }
+                if (img.mirror === 'vertical' || img.mirror === 'both') {
+                    imgEl.style.transform += 'scaleY(-1)';
+                }
+                
+                imgElement.appendChild(imgEl);
+                a4Preview.appendChild(imgElement);
+            }
+            
+            // 監聽間距設定變更
+            document.getElementById('spacing').addEventListener('change', updatePreview);
+            document.getElementById('columns').addEventListener('change', updatePreview);
+            
+            applyBtn.addEventListener('click', function() {
+                const width = parseFloat(document.getElementById('img-width').value) || 5;
+                const height = parseFloat(document.getElementById('img-height').value) || 5;
+                const keepRatio = document.getElementById('keep-ratio').checked;
+                const mirror = document.getElementById('mirror-option').value;
+                
+                // 应用设置到所有图片
+                uploadedImages.forEach(img => {
+                    img.displayWidth = width;
+                    
+                    if (keepRatio) {
+                        const ratio = img.height / img.width;
+                        img.displayHeight = width * ratio;
+                    } else {
+                        img.displayHeight = height;
+                    }
+                    
+                    img.mirror = mirror;
+                });
+                
+                updateGallery();
+                updatePreview();
+            });
+            
+            // PDF导出功能
+            exportBtn.addEventListener('click', function() {
+                if (uploadedImages.length === 0) {
+                    alert('請先上傳圖片');
+                    return;
+                }
+                
+                // 显示加载动画
+                loadingOverlay.style.display = 'flex';
+                
+                // 临时隐藏非图片元素，确保它们不出现在PDF中
+                const hideElements = () => {
+                    // 隐藏边距指示和内容区域指示
+                    const elements = a4Preview.querySelectorAll('.margin-guide, .content-area');
+                    elements.forEach(el => {
+                        el.style.display = 'none';
+                    });
+                    
+                    // 确保所有图片没有虛線邊框
+                    const images = a4Preview.querySelectorAll('img');
+                    images.forEach(img => {
+                        img.style.border = 'none';
+                    });
+                };
+                
+                // 在生成PDF前隱藏不需要的元素
+                hideElements();
+                
+                // 延迟执行以确保加载动画显示
+                setTimeout(() => {
+                    generatePDF();
+                }, 100);
+            });
+            
+            function generatePDF() {
+                // 使用html2canvas将A4预览区域转为canvas
+                html2canvas(a4Preview, {
+                    scale: 2, // 提高输出质量
+                    useCORS: true,
+                    allowTaint: true,
+                    backgroundColor: '#ffffff'
+                }).then(canvas => {
+                    // 创建PDF文档
+                    const pdf = new jsPDF({
+                        orientation: 'portrait',
+                        unit: 'mm',
+                        format: 'a4'
+                    });
+                    
+                    // 将canvas转为图片
+                    const imgData = canvas.toDataURL('image/jpeg', 1.0);
+                    
+                    // 添加图片到PDF (不需要添加额外边距，因为在布局中已经考虑了)
+                    pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+                    
+                    // 保存PDF
+                    pdf.save('圖片排版.pdf');
+                    
+                    // 重新显示之前隐藏的元素
+                    const elements = a4Preview.querySelectorAll('.margin-guide, .content-area');
+                    elements.forEach(el => {
+                        el.style.display = '';
+                    });
+                    
+                    // 隐藏加载动画
+                    loadingOverlay.style.display = 'none';
+                }).catch(error => {
+                    console.error('PDF生成失敗:', error);
+                    alert('PDF生成失敗: ' + error.message);
+                    
+                    // 重新显示边距指示
+                    const elements = a4Preview.querySelectorAll('.margin-guide, .content-area');
+                    elements.forEach(el => {
+                        el.style.display = '';
+                    });
+                    
+                    loadingOverlay.style.display = 'none';
+                });
+            }
+            
+            // 初始化添加边距指示
+            addMarginGuides();
+        });
+    </script>
+</body>
+</html>
